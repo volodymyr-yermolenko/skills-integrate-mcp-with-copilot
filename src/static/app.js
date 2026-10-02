@@ -2,7 +2,79 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitiesList = document.getElementById("activities-list");
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
+  const signupContainer = document.getElementById("signup-container");
   const messageDiv = document.getElementById("message");
+  const teacherLoginButton = document.getElementById("teacher-login-button");
+  const teacherLogoutButton = document.getElementById("teacher-logout-button");
+  const teacherLoginDialog = document.getElementById("teacher-login-dialog");
+  const teacherLoginForm = document.getElementById("teacher-login-form");
+  const teacherLoginError = document.getElementById("teacher-login-error");
+  let teacherCredentials = null;
+
+  function updateTeacherControls() {
+    const isTeacher = teacherCredentials !== null;
+    signupContainer.hidden = !isTeacher;
+    teacherLoginButton.hidden = isTeacher;
+    teacherLogoutButton.hidden = !isTeacher;
+  }
+
+  function getTeacherHeaders() {
+    if (!teacherCredentials) {
+      return {};
+    }
+
+    return {
+      Authorization: `Basic ${btoa(
+        `${teacherCredentials.username}:${teacherCredentials.password}`
+      )}`,
+    };
+  }
+
+  teacherLoginButton.addEventListener("click", () => {
+    teacherLoginError.classList.add("hidden");
+    teacherLoginDialog.showModal();
+  });
+
+  document
+    .getElementById("teacher-login-cancel")
+    .addEventListener("click", () => teacherLoginDialog.close());
+
+  teacherLogoutButton.addEventListener("click", () => {
+    teacherCredentials = null;
+    updateTeacherControls();
+    fetchActivities();
+  });
+
+  teacherLoginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = document.getElementById("teacher-username").value;
+    const password = document.getElementById("teacher-password").value;
+
+    try {
+      const response = await fetch("/auth/teacher", {
+        headers: {
+          Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+        },
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        teacherLoginError.textContent = result.detail || "Login failed";
+        teacherLoginError.classList.remove("hidden");
+        return;
+      }
+
+      teacherCredentials = { username, password };
+      teacherLoginForm.reset();
+      teacherLoginDialog.close();
+      updateTeacherControls();
+      fetchActivities();
+    } catch (error) {
+      teacherLoginError.textContent = "Unable to log in. Please try again.";
+      teacherLoginError.classList.remove("hidden");
+      console.error("Error logging in:", error);
+    }
+  });
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -12,6 +84,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -28,10 +101,12 @@ document.addEventListener("DOMContentLoaded", () => {
               <h5>Participants:</h5>
               <ul class="participants-list">
                 ${details.participants
-                  .map(
-                    (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
-                  )
+                  .map((email) => {
+                    const removeButton = teacherCredentials
+                      ? `<button type="button" class="delete-btn" data-activity="${name}" data-email="${email}">Remove</button>`
+                      : "";
+                    return `<li><span class="participant-email">${email}</span>${removeButton}</li>`;
+                  })
                   .join("")}
               </ul>
             </div>`
@@ -80,6 +155,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/unregister?email=${encodeURIComponent(email)}`,
         {
           method: "DELETE",
+          headers: getTeacherHeaders(),
         }
       );
 
@@ -124,6 +200,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/signup?email=${encodeURIComponent(email)}`,
         {
           method: "POST",
+          headers: getTeacherHeaders(),
         }
       );
 
